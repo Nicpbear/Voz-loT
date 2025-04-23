@@ -1,52 +1,52 @@
 import os
+import time
+import glob
+import json
+import paho.mqtt.client as paho
 import streamlit as st
+from PIL import Image
+from gtts import gTTS
+from googletrans import Translator
 from bokeh.models.widgets import Button
 from bokeh.models import CustomJS
 from streamlit_bokeh_events import streamlit_bokeh_events
-from PIL import Image
-import time
-import glob
-import paho.mqtt.client as paho
-import json
-from gtts import gTTS
-from googletrans import Translator
 
-def on_publish(client,userdata,result):             #create function for callback
-    print("el dato ha sido publicado \n")
-    pass
+# MQTT Configuración y Callbacks
+broker = "157.230.214.127"
+port = 1883
+client_id = "GIT-HUBC"
+
+message_received = ""
+
+def on_publish(client, userdata, result):
+    print("✅ Dato publicado con éxito.\n")
 
 def on_message(client, userdata, message):
     global message_received
     time.sleep(2)
-    message_received=str(message.payload.decode("utf-8"))
-    st.write(message_received)
+    message_received = str(message.payload.decode("utf-8"))
+    st.success(f"📩 Mensaje recibido: {message_received}")
 
-broker="157.230.214.127"
-port=1883
-client1= paho.Client("GIT-HUBC")
-client1.on_message = on_message
+client = paho.Client(client_id)
+client.on_message = on_message
 
+# Interfaz de Streamlit
+st.title("🎙️ Interfaces Multimodales")
+st.subheader("🗣️ Control por Voz")
 
-
-st.title("INTERFACES MULTIMODALES")
-st.subheader("CONTROL POR VOZ")
-
-image = Image.open('voice_ctrl.jpg')
-
+# Imagen decorativa
+image = Image.open("voice_ctrl.jpg")
 st.image(image, width=200)
 
+st.markdown("#### Presiona el botón y empieza a hablar:")
 
-
-
-st.write("Toca el Botón y habla ")
-
-stt_button = Button(label=" Inicio ", width=200)
-
-stt_button.js_on_event("button_click", CustomJS(code="""
+# Botón Bokeh para reconocimiento de voz
+voice_button = Button(label="🎤 Iniciar Reconocimiento de Voz", width=250)
+voice_button.js_on_event("button_click", CustomJS(code="""
     var recognition = new webkitSpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
- 
+
     recognition.onresult = function (e) {
         var value = "";
         for (var i = e.resultIndex; i < e.results.length; ++i) {
@@ -54,31 +54,33 @@ stt_button.js_on_event("button_click", CustomJS(code="""
                 value += e.results[i][0].transcript;
             }
         }
-        if ( value != "") {
-            document.dispatchEvent(new CustomEvent("GET_TEXT", {detail: value}));
+        if (value !== "") {
+            document.dispatchEvent(new CustomEvent("GET_TEXT", { detail: value }));
         }
-    }
+    };
     recognition.start();
-    """))
+"""))
 
+# Captura de eventos de voz
 result = streamlit_bokeh_events(
-    stt_button,
+    voice_button,
     events="GET_TEXT",
     key="listen",
     refresh_on_update=False,
     override_height=75,
-    debounce_time=0)
+    debounce_time=0
+)
 
-if result:
-    if "GET_TEXT" in result:
-        st.write(result.get("GET_TEXT"))
-        client1.on_publish = on_publish                            
-        client1.connect(broker,port)  
-        message =json.dumps({"Act1":result.get("GET_TEXT").strip()})
-        ret= client1.publish("voice_ctrl", message)
-
+# Procesamiento de comando de voz
+if result and "GET_TEXT" in result:
+    comando = result.get("GET_TEXT").strip()
+    st.info(f"📝 Comando recibido: `{comando}`")
     
-    try:
-        os.mkdir("temp")
-    except:
-        pass
+    client.on_publish = on_publish
+    client.connect(broker, port)
+    
+    msg = json.dumps({"Act1": comando})
+    client.publish("voice_ctrl", msg)
+
+    # Crear carpeta temporal si no existe
+    os.makedirs("temp", exist_ok=True)
